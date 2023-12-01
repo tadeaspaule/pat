@@ -43,16 +43,21 @@ def split(
   dir: Annotated[str, typer.Option("--dir", "-d")] = None,
   output_dir: Annotated[str, typer.Option("--output-dir", "-od")] = "PATH_split",
   crop_to_content: Annotated[bool, typer.Option("--crop-to-content", "-c", help="default: False")] = False,
+  crop_top: Annotated[int, typer.Option("--crop-top", "-ct", help="Crop new files by N from top")] = 0,
+  crop_right: Annotated[int, typer.Option("--crop-right", "-cr", help="Crop new files by N from right")] = 0,
+  crop_bottom: Annotated[int, typer.Option("--crop-bottom", "-cb", help="Crop new files by N from bottom")] = 0,
+  crop_left: Annotated[int, typer.Option("--crop-left", "-cl", help="Crop new files by N from left")] = 0,
   single_row: Annotated[bool, typer.Option("--single-row", "-r", help="If true, assumes it is a single-row spritesheet with square cells")] = False,
-  nx: Annotated[int, typer.Option("--nx", "-nx")] = None,
-  ny: Annotated[int, typer.Option("--ny", "-ny")] = None,
-  cell_x: Annotated[int, typer.Option("--cell-x", "-cx")] = None,
-  cell_y: Annotated[int, typer.Option("--cell-y", "-cy")] = None,
-  cell_size: Annotated[int, typer.Option("--cell-size", "-s", help="If set, assumes square cells of this size")] = None,
-  offset_x: Annotated[int, typer.Option("--offset-x", "-ox")] = None,
-  offset_y: Annotated[int, typer.Option("--offset-y", "-oy")] = None,
-  spacing_x: Annotated[int, typer.Option("--spacing-x", "-sx")] = None,
-  spacing_y: Annotated[int, typer.Option("--spacing-y", "-sy")] = None,
+  nx: Annotated[int, typer.Option("--nx", "-nx", help="Number of columns")] = None,
+  ny: Annotated[int, typer.Option("--ny", "-ny", help="Number of rows")] = None,
+  cell_x: Annotated[int, typer.Option("--cell-x", "-cx", help="Cell width")] = None,
+  cell_y: Annotated[int, typer.Option("--cell-y", "-cy", help="Cell height")] = None,
+  cell_size: Annotated[int, typer.Option("--cell-size", "-c", help="Square cell side")] = None,
+  offset_x: Annotated[int, typer.Option("--offset-x", "-ox",help="Starting x offset")] = None,
+  offset_y: Annotated[int, typer.Option("--offset-y", "-oy",help="Starting y offset")] = None,
+  spacing_x: Annotated[int, typer.Option("--spacing-x", "-sx",help="Inner x margins of each cell")] = 0,
+  spacing_y: Annotated[int, typer.Option("--spacing-y", "-sy",help="Inner y margins of each cell")] = 0,
+  spacing: Annotated[int, typer.Option("--spacing", "-s",help="Inner x and y margins of each cell")] = 0,
   ):
   """
   Splits a spritesheet (or all spritesheets contained in a directory) into separate files.
@@ -61,12 +66,16 @@ def split(
   
   single_row > nx + ny > cell_size > cell_x + cell_y
   """
+  if spacing != 0:
+    spacing_x = spacing
+    spacing_y = spacing
   if output_dir == "PATH_split":
     output_dir = None
   path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,output_dir)
   if doing_dir and not single_row and cell_size is None and (cell_y is None or cell_x is None):
     print(f"When doing directory, need to specify either single_row or cell size")
     exit(1)
+  crop_edges = [crop_top,crop_right,crop_bottom,crop_left]
   if cell_size is not None:
     cell_x = cell_size
     cell_y = cell_size
@@ -79,9 +88,9 @@ def split(
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
-      _split(fp, f"{output_dir}/{f}", crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x],[offset_y],[spacing_x,spacing_y])
+      _split(fp, f"{output_dir}/{f}", crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x],[offset_y],[spacing_x,spacing_y], crop_edges)
   else:
-    _split(path, output_dir, crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x,offset_y],[spacing_x,spacing_y])
+    _split(path, output_dir, crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x,offset_y],[spacing_x,spacing_y], crop_edges)
 
   
 @app.command()
@@ -163,7 +172,7 @@ def _remove_bg(path: str, new_path: str, bg_col: list):
         pixels[x,y] = (0,0,0,0)
   img.save(new_path)
 
-def _split(filename: str, output_dir: str, crop_content: bool, single_row: bool, n: list, cell_size: list, offset: list, spacing: list):
+def _split(filename: str, output_dir: str, crop_content: bool, single_row: bool, n: list, cell_size: list, offset: list, spacing: list, crop_edges: list):
   if not os.path.exists(output_dir) or not os.path.isdir(output_dir):
     os.mkdir(output_dir)
   sheet = Image.open(filename).convert("RGBA")
@@ -189,11 +198,11 @@ def _split(filename: str, output_dir: str, crop_content: bool, single_row: bool,
     dy = cell_size[1]
 
   if dx > 0 and dy > 0:
-    nx = sheet.size[0] / dx
-    ny = sheet.size[1] / dy
+    nx = int(sheet.size[0] / dx)
+    ny = int(sheet.size[1] / dy)
   elif nx > 0 and ny > 0:
-    dx = sheet.size[0] / nx
-    dy = sheet.size[1] / ny
+    dx = int(sheet.size[0] / nx)
+    dy = int(sheet.size[1] / ny)
   else:
     return
   spacex = spacing[0] if spacing[0] is not None else 0
@@ -203,7 +212,11 @@ def _split(filename: str, output_dir: str, crop_content: bool, single_row: bool,
     for x in range(nx):
       sx = start[0] + x * dx
       sy = start[1] + y * dy
-      icon = sheet.crop((sx,sy,sx+dx-spacex,sy+dy-spacey))
+      icon = sheet.crop((
+        sx+spacex+crop_edges[3],
+        sy+spacey+crop_edges[0],
+        sx+dx-spacex-crop_edges[1],
+        sy+dy-spacey-crop_edges[2]))
       pix = icon.load()
       isempty = True
       minx,miny,maxx,maxy = icon.size[0],icon.size[1],0,0
