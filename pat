@@ -75,6 +75,9 @@ def split(
   if doing_dir and not single_row and cell_size is None and (cell_y is None or cell_x is None):
     print(f"When doing directory, need to specify either single_row or cell size")
     exit(1)
+  elif not doing_dir and not single_row and cell_size is None and (cell_y is None or cell_x is None) and (nx is None or ny is None):
+    print(f"When doing directory, need to specify one of: single_row, nx + ny, cell size")
+    exit(1)
   crop_edges = [crop_top,crop_right,crop_bottom,crop_left]
   if cell_size is not None:
     cell_x = cell_size
@@ -88,7 +91,7 @@ def split(
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
-      _split(fp, f"{output_dir}/{f}", crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x],[offset_y],[spacing_x,spacing_y], crop_edges)
+      _split(fp, f"{output_dir}/{f}", crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x, offset_y],[spacing_x,spacing_y], crop_edges)
   else:
     _split(path, output_dir, crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x,offset_y],[spacing_x,spacing_y], crop_edges)
 
