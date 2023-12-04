@@ -37,6 +37,7 @@ def _rgb_col_param(str_param: str, param_name: str) -> list:
     exit(1)
   return col
 
+
 @app.command()
 def split(
   file: Annotated[str, typer.Option("--file", "-f")] = None,
@@ -95,7 +96,38 @@ def split(
   else:
     _split(path, output_dir, crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x,offset_y],[spacing_x,spacing_y], crop_edges)
 
-  
+@app.command()
+def rm_prefix(
+  prefix: str,
+  dir: str):
+  if not os.path.exists(dir):
+    print("Invalid path")
+    exit(1)
+  if not os.path.isdir(dir):
+    print("Path is not a directory")
+    exit(1)
+  for fn in os.listdir(dir):
+    if not fn.startswith(prefix):
+      continue
+    os.rename(f"{dir}/{fn}", f"{dir}/{fn[len(prefix):]}")
+
+@app.command()
+def rm_suffix(
+  suffix: str,
+  dir: str):
+  if not os.path.exists(dir):
+    print("Invalid path")
+    exit(1)
+  if not os.path.isdir(dir):
+    print("Path is not a directory")
+    exit(1)
+  for fn in os.listdir(dir):
+    parts = fn.split(".")
+    b, ext = ".".join(parts[:-1]), parts[-1]
+    if not b.endswith(suffix):
+      continue
+    os.rename(f"{dir}/{fn}", f"{dir}/{b[:-len(suffix)]}.{ext}")
+ 
 @app.command()
 def rm_bg(
   file: Annotated[str, typer.Option("--file", "-f")] = None,

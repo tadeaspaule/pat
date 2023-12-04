@@ -10,6 +10,14 @@ Do `pat COMMAND --help` for specifics regarding parameters, options, etc
 
 For splitting a spritesheet into individual files. You have options for specifying cell size or number of rows and columns, and more.
 
+## rm-prefix
+
+Sometimes spritesheets come in separate files but you want to get rid of prefixes like `atk_1_` etc. Just do `pat rm-prefix PREFIX DIRPATH`
+
+## rm-suffix
+
+Same as above but for suffixes
+
 ## rm-bg
 
 For removing a single-color background.
