@@ -30,12 +30,12 @@ def _suffixed_path(path: str, suffix: str) -> str:
   fparts = path.split(".")
   return f"{'.'.join(fparts[:-1])}{suffix}.{fparts[-1]}"
 
-def _rgb_col_param(str_param: str, param_name: str) -> list:
+def _rgb_col_param(str_param: str, param_name: str, has_alpha: bool = False) -> list:
   col = [int(n) for n in str_param.split(",") if n.isnumeric()]
-  if len(col) != 3 or max(col) > 255 or min(col) < 0:
+  if len(col) != (4 if has_alpha else 3) or max(col) > 255 or min(col) < 0:
     print(f"Invalid {param_name} format")
     exit(1)
-  return col
+  return tuple(col)
 
 
 @app.command()
@@ -44,6 +44,7 @@ def split(
   dir: Annotated[str, typer.Option("--dir", "-d")] = None,
   output_dir: Annotated[str, typer.Option("--output-dir", "-od")] = "PATH_split",
   crop_to_content: Annotated[bool, typer.Option("--crop-to-content", "-c", help="default: False")] = False,
+  crop_all: Annotated[int, typer.Option("--crop-all", "-ca", help="Crop new files by N from all sides")] = 0,
   crop_top: Annotated[int, typer.Option("--crop-top", "-ct", help="Crop new files by N from top")] = 0,
   crop_right: Annotated[int, typer.Option("--crop-right", "-cr", help="Crop new files by N from right")] = 0,
   crop_bottom: Annotated[int, typer.Option("--crop-bottom", "-cb", help="Crop new files by N from bottom")] = 0,
@@ -79,6 +80,8 @@ def split(
   elif not doing_dir and not single_row and cell_size is None and (cell_y is None or cell_x is None) and (nx is None or ny is None):
     print(f"When doing directory, need to specify one of: single_row, nx + ny, cell size")
     exit(1)
+  if crop_all > 0:
+    crop_right, crop_top, crop_bottom, crop_left = crop_all, crop_all, crop_all, crop_all
   crop_edges = [crop_top,crop_right,crop_bottom,crop_left]
   if cell_size is not None:
     cell_x = cell_size
@@ -176,6 +179,82 @@ def rm_shadow(
   else:
     _remove_shadow(path, _suffixed_path(path, filename_suffix) if output_dir is None else f"{output_dir}/{_suffixed_path(path.split('/')[-1],filename_suffix)}", shadow_col)
 
+@app.command()
+def crop(
+  file: Annotated[str, typer.Option("--file", "-f")] = None,
+  dir: Annotated[str, typer.Option("--dir", "-d")] = None,
+  crop_all: Annotated[int, typer.Option("--all", "-a", help="Crop file(s) by N from all sides")] = 0,
+  crop_top: Annotated[int, typer.Option("--top", "-t", help="Crop file(s) by N from top")] = 0,
+  crop_right: Annotated[int, typer.Option("--right", "-r", help="Crop file(s) by N from right")] = 0,
+  crop_bottom: Annotated[int, typer.Option("--bottom", "-b", help="Crop file(s) by N from bottom")] = 0,
+  crop_left: Annotated[int, typer.Option("--left", "-l", help="Crop file(s) by N from left")] = 0,
+  ):
+  """
+  Crops edges from a file (or all files in directory)
+  """
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,None)
+  output_path = dir + "_cropped" if doing_dir else _suffixed_path(file)
+  if crop_all > 0:
+    crop_right, crop_top, crop_bottom, crop_left = crop_all, crop_all, crop_all, crop_all
+  c = [crop_top, crop_right, crop_bottom, crop_left]
+  if doing_dir:
+    if not os.path.exists(output_path):
+      os.mkdir(output_path)
+    for f in os.listdir(path):
+      fp = f"{path}/{f}"
+      if not os.path.isfile(fp):
+        continue
+      _crop(fp, f"{output_path}/{f}", c)
+  else:
+    _crop(path, output_path, c)
+
+@app.command()
+def pad(
+  file: Annotated[str, typer.Option("--file", "-f")] = None,
+  dir: Annotated[str, typer.Option("--dir", "-d")] = None,
+  pad_all: Annotated[int, typer.Option("--all", "-a", help="Pad file(s) by N from all sides")] = 0,
+  pad_top: Annotated[int, typer.Option("--top", "-t", help="Pad file(s) by N from top")] = 0,
+  pad_right: Annotated[int, typer.Option("--right", "-r", help="Pad file(s) by N from right")] = 0,
+  pad_bottom: Annotated[int, typer.Option("--bottom", "-b", help="Pad file(s) by N from bottom")] = 0,
+  pad_left: Annotated[int, typer.Option("--left", "-l", help="Pad file(s) by N from left")] = 0,
+  padding_color: Annotated[str, typer.Option("--color", "-c", help="Color for new edges, comma-separated RGBA")] = "0,0,0,0",
+  ):
+  """
+  Pads a file (or all files in directory) with given color (default transparent)
+
+  Output is named NAME_padded if -f, NAME_padded directory with same-name files if -d
+  """
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,None)
+  output_path = dir + "_padded" if doing_dir else _suffixed_path(file)
+  if pad_all > 0:
+    pad_right, pad_top, pad_bottom, pad_left = pad_all, pad_all, pad_all, pad_all
+  p = [pad_top, pad_right, pad_bottom, pad_left]
+  pc = _rgb_col_param(padding_color, "color", True)
+  if doing_dir:
+    if not os.path.exists(output_path):
+      os.mkdir(output_path)
+    for f in os.listdir(path):
+      fp = f"{path}/{f}"
+      if not os.path.isfile(fp):
+        continue
+      _pad(fp, f"{output_path}/{f}", p, pc)
+  else:
+    _pad(path, output_path, p, pc)
+
+def _pad(path: str, output_path: str, padding: list[int], pad_color: list[int]):
+  img = Image.open(path).convert("RGBA")
+  width, height = img.size
+  new_width = width + padding[1] + padding[3]
+  new_height = height + padding[0] + padding[2]
+  result = Image.new(img.mode, (new_width, new_height), pad_color)
+  result.paste(img, (padding[3], padding[0]))
+  result.save(output_path)
+
+def _crop(path: str, output_path: str, c: list[int]):
+  img = Image.open(path).convert("RGBA")
+  img = img.crop((c[3],c[0],img.size[0]-c[1],img.size[1]-c[2]))
+  img.save(output_path)
+ 
 def _remove_shadow(path: str, new_path: str, shadow_col: list):
   img = Image.open(path).convert("RGBA")
   pixels = img.load()
