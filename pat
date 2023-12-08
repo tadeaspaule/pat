@@ -32,7 +32,7 @@ def _suffixed_path(path: str, suffix: str) -> str:
 
 def _rgb_col_param(str_param: str, param_name: str, has_alpha: bool = False) -> list:
   col = [int(n) for n in str_param.split(",") if n.isnumeric()]
-  if len(col) != (4 if has_alpha else 3) or max(col) > 255 or min(col) < 0:
+  if (len(col) != 3 and not (has_alpha and len(col) == 4)) or max(col) > 255 or min(col) < 0:
     print(f"Invalid {param_name} format")
     exit(1)
   return tuple(col)
