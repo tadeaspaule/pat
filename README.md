@@ -10,6 +10,9 @@ Do `pat COMMAND --help` for specifics regarding parameters, options, etc
 
 For splitting a spritesheet into individual files. You have options for specifying cell size or number of rows and columns, and more.
 
+## colalts
+
+Makes alternates of image (or all images in given directory). Does this by shuffling RGB values, for ex. in one image it swaps the original's R channel and B channel, etc.
 ## rm-prefix
 
 Sometimes spritesheets come in separate files but you want to get rid of prefixes like `atk_1_` etc. Just do `pat rm-prefix PREFIX DIRPATH`

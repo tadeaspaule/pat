@@ -100,6 +100,43 @@ def split(
     _split(path, output_dir, crop_to_content, single_row, [nx,ny],[cell_x,cell_y],[offset_x,offset_y],[spacing_x,spacing_y], crop_edges)
 
 @app.command()
+def colalts(
+  file: Annotated[str, typer.Option("--file", "-f")] = None,
+  dir: Annotated[str, typer.Option("--dir", "-d")] = None,
+  output_dir: Annotated[str, typer.Option("--output-dir", "-od", help="If not given, set to given path")] = None):
+  """
+  Makes alternates of image (or all images in given directory)
+  Does this by shuffling RGB values, for ex. in one image it swaps the original's R channel and B channel, etc.
+  """
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir, output_dir)
+  if output_dir is None:
+    if dir is not None: output_dir = dir
+    else: output_dir = os.path.dirname(file)
+  output_dir = os.path.abspath(output_dir)
+  
+  if doing_dir:
+    for f in os.listdir(path):
+      fp = f"{path}/{f}"
+      if not os.path.isfile(fp):
+        continue
+      _colalts(fp, output_dir)
+  else:
+    _colalts(path, output_dir)
+
+def _colalts(path: str, output_dir: str):
+  fn, ext = os.path.splitext(os.path.basename(path))
+  img = Image.open(path).convert("RGBA")
+  alts = [[0,2,1],[1,0,2],[1,2,0],[2,1,0],[2,0,1]]
+  for i in range(len(alts)):
+    a = alts[i]
+    altimg = img.copy()
+    p = altimg.load()
+    for x in range(img.size[0]):
+      for y in range(img.size[1]):
+        p[x,y] = (p[x,y][a[0]],p[x,y][a[1]],p[x,y][a[2]],p[x,y][3])
+    altimg.save(f"{output_dir}/{fn}_ca{i}{ext}")
+
+@app.command()
 def rm_prefix(
   prefix: str,
   dir: str):
@@ -138,12 +175,11 @@ def rm_bg(
   output_dir: Annotated[str, typer.Option("--output-dir", "-od", help="If not given, set to given path")] = None,
   filename_suffix: Annotated[str, typer.Option("--filename-suffix","-fs")] = "_rmbg",
   background_color: Annotated[str, typer.Option("--background-color", "-bg",help="Comma-separated list of 0-255 RGB values")] = "255,255,255"):
-  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir, output_dir)
   """
-  Remvoes a single-color background from file (or all files contained in directory).
-  
+  Removes a single-color background from file (or all files contained in directory).
   By default, puts new files alongside old ones. If you want to replace them, use -fs ""
   """
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir, output_dir)
   
   bg_col =  _rgb_col_param(background_color, "background_color")
   if doing_dir:
@@ -162,12 +198,12 @@ def rm_shadow(
   output_dir: Annotated[str, typer.Option("--output-dir", "-od", help="If not given, set to given path")] = None,
   filename_suffix: Annotated[str, typer.Option("--filename-suffix","-fs")] = "_rms",
   shadow_color: Annotated[str, typer.Option("--shadow-color", "-cg",help="Comma-separated list of 0-255 RGB values")] = "0,0,0"):
-  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir, output_dir)
   """
-  Remvoes shadow from file (or all files contained in directory). Here shadow means a pixel that only borders transparent or shadow pixels (not diagonally).
+  Removes shadow from file (or all files contained in directory). Here shadow means a pixel that only borders transparent or shadow pixels (not diagonally).
   
   By default, puts new files alongside old ones. If you want to replace them, use -fs ""
   """
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir, output_dir)
   
   shadow_col =  _rgb_col_param(shadow_color, "shadow_color")
   if doing_dir:
