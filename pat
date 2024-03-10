@@ -7,6 +7,9 @@ from typing import Optional
 
 app = typer.Typer()
 
+def _listdir(path: str):
+  return [fp for fp in os.listdir(path) if not fp.endswith(".import")]
+
 def _basic_file_dir_checks(file: str, dir: str, output_dir: str):
   if file is None and dir is None:
     print("Need either file or directory specified")
@@ -37,13 +40,67 @@ def _rgb_col_param(str_param: str, param_name: str, has_alpha: bool = False) -> 
     exit(1)
   return tuple(col)
 
+@app.command()
+def palette(
+  file: Annotated[str, typer.Argument()],
+  tolerance: Annotated[int, typer.Option("--tolerance", "-t",help="How much distance between RGB values can be taken as same color")] = 0,
+):
+  """
+  Prints a Godot Array[Color] of the used color palette, sorted from lightest to darkest
+  """
+  if not os.path.isfile(file):
+    print("Invalid file path")
+    exit(1)
+  img = Image.open(file)
+  pixels = img.load()
+  cols = set()
+  for x in range(img.size[0]): # for every pixel:
+    for y in range(img.size[1]):
+      this_col = pixels[x,y][:3]
+      valid = True
+      if this_col in cols: continue
+      for c in cols:
+        if sum(abs(c[i] - this_col[i]) for i in range(3)) <= tolerance:
+          valid = False
+          break
+      if valid: cols.add(this_col)
+  cols = sorted(list(cols),key=lambda c: sum(c))
+  # print(cols)
+  palstr = "\n".join(f'  Color8({c[0]},{c[1]},{c[2]}),' for c in cols)
+  print(f"const palette = [\n{palstr}\n]")
+  # print(f"{len(cols)} when t {tolerance}")
+
+@app.command()
+def outline(
+  file: Annotated[str, typer.Option("--file", "-f")] = None,
+  dir: Annotated[str, typer.Option("--dir", "-d")] = None,
+  output_dir: Annotated[str, typer.Option("--output-dir", "-od")] = "PATH_outlined"
+  ):
+  """
+  Adds a black outline to a file (or all files contained in directory)
+  """
+  if output_dir == "PATH_outlined":
+    output_dir = None
+  path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,output_dir)
+  if output_dir is None:
+    output_dir = path + "_outlined"
+  if not os.path.exists(output_dir):
+    os.mkdir(output_dir)
+  if doing_dir:
+    for f in _listdir(path):
+      fp = f"{path}/{f}"
+      if not os.path.isfile(fp):
+        continue
+      _outline(fp, f"{output_dir}/{f}")
+  else:
+    _outline(path, output_dir)
 
 @app.command()
 def split(
   file: Annotated[str, typer.Option("--file", "-f")] = None,
   dir: Annotated[str, typer.Option("--dir", "-d")] = None,
   output_dir: Annotated[str, typer.Option("--output-dir", "-od")] = "PATH_split",
-  crop_to_content: Annotated[bool, typer.Option("--crop-to-content", "-c", help="default: False")] = False,
+  crop_to_content: Annotated[bool, typer.Option("--crop-to-content", "-cc", help="default: False")] = False,
   crop_all: Annotated[int, typer.Option("--crop-all", "-ca", help="Crop new files by N from all sides")] = 0,
   crop_top: Annotated[int, typer.Option("--crop-top", "-ct", help="Crop new files by N from top")] = 0,
   crop_right: Annotated[int, typer.Option("--crop-right", "-cr", help="Crop new files by N from right")] = 0,
@@ -91,7 +148,7 @@ def split(
   if not os.path.exists(output_dir):
     os.mkdir(output_dir)
   if doing_dir:
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -115,7 +172,7 @@ def colalts(
   output_dir = os.path.abspath(output_dir)
   
   if doing_dir:
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -183,7 +240,7 @@ def rm_bg(
   
   bg_col =  _rgb_col_param(background_color, "background_color")
   if doing_dir:
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -207,7 +264,7 @@ def rm_shadow(
   
   shadow_col =  _rgb_col_param(shadow_color, "shadow_color")
   if doing_dir:
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -229,14 +286,14 @@ def crop(
   Crops edges from a file (or all files in directory)
   """
   path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,None)
-  output_path = dir + "_cropped" if doing_dir else _suffixed_path(file)
+  output_path = dir + "_cropped" if doing_dir else _suffixed_path(file,"_cropped")
   if crop_all > 0:
     crop_right, crop_top, crop_bottom, crop_left = crop_all, crop_all, crop_all, crop_all
   c = [crop_top, crop_right, crop_bottom, crop_left]
   if doing_dir:
     if not os.path.exists(output_path):
       os.mkdir(output_path)
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -269,7 +326,7 @@ def pad(
   if doing_dir:
     if not os.path.exists(output_path):
       os.mkdir(output_path)
-    for f in os.listdir(path):
+    for f in _listdir(path):
       fp = f"{path}/{f}"
       if not os.path.isfile(fp):
         continue
@@ -320,6 +377,24 @@ def _remove_bg(path: str, new_path: str, bg_col: list):
       if is_bg:
         bgcount += 1
         pixels[x,y] = (0,0,0,0)
+  img.save(new_path)
+
+def _outline(path: str, new_path: str):
+  img = Image.open(path).convert("RGBA")
+  pixels = img.load()
+  vects = [(-1,0),(0,-1),(1,0),(0,1)]
+  for x in range(img.size[0]): # for every pixel:
+    for y in range(img.size[1]):
+      if sum(pixels[x,y]) == 0:
+        has_neighbor = False
+        for v in vects:
+          nx, ny = x + v[0], y + v[1]
+          if nx >= 0 and ny >= 0 and nx < img.size[0] and ny < img.size[1]:
+            if sum(pixels[nx,ny][:3]) != 0:
+              has_neighbor = True
+              break
+        if has_neighbor:
+          pixels[x,y] = (0,0,0,255)
   img.save(new_path)
 
 def _split(filename: str, output_dir: str, crop_content: bool, single_row: bool, n: list, cell_size: list, offset: list, spacing: list, crop_edges: list):
