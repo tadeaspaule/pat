@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import math
 from PIL import Image
 import os
 import typer
@@ -51,9 +52,17 @@ def palette(
   if not os.path.isfile(file):
     print("Invalid file path")
     exit(1)
+  cols,_ = _palette(file, tolerance)
+  # print(cols)
+  palstr = "\n".join(f'  Color8({c[0]},{c[1]},{c[2]}),' for c in cols)
+  print(f"const palette = [\n{palstr}\n]")
+  # print(f"{len(cols)} when t {tolerance}")
+
+def _palette(file, tolerance):
   img = Image.open(file)
   pixels = img.load()
   cols = set()
+  col_to_palette_col = dict()
   for x in range(img.size[0]): # for every pixel:
     for y in range(img.size[1]):
       this_col = pixels[x,y][:3]
@@ -61,14 +70,13 @@ def palette(
       if this_col in cols: continue
       for c in cols:
         if sum(abs(c[i] - this_col[i]) for i in range(3)) <= tolerance:
+          col_to_palette_col[this_col] = c
           valid = False
           break
-      if valid: cols.add(this_col)
-  cols = sorted(list(cols),key=lambda c: sum(c))
-  # print(cols)
-  palstr = "\n".join(f'  Color8({c[0]},{c[1]},{c[2]}),' for c in cols)
-  print(f"const palette = [\n{palstr}\n]")
-  # print(f"{len(cols)} when t {tolerance}")
+      if valid:
+        col_to_palette_col[this_col] = this_col
+        cols.add(this_col)
+  return (sorted(list(cols),key=lambda c: sum(c)), col_to_palette_col)
 
 @app.command()
 def outline(
@@ -94,6 +102,46 @@ def outline(
       _outline(fp, f"{output_dir}/{f}")
   else:
     _outline(path, output_dir)
+
+@app.command()
+def copy_palette(
+  source_file: Annotated[str, typer.Argument(help="File to get color palette from")],
+  file: Annotated[str, typer.Option("--file", "-f")] = None,
+  dir: Annotated[str, typer.Option("--dir", "-d")] = None,
+  output_suffix: Annotated[str, typer.Option("--output-suffix", "-os")] = "cp",
+  tolerance: Annotated[int, typer.Option("--tolerance", "-t",help="How much distance between RGB values can be taken as same color")] = 0,
+  ):
+  """
+  Copies a color palette from a source file to a file or all files contained in directory
+  """
+  # path, doing_dir, doing_type, doing_type_opposite = _basic_file_dir_checks(file,dir,output_suffix)
+  doing_dir = dir is not None
+  if doing_dir and not os.path.exists(f"{dir}{output_suffix}"):
+    os.mkdir(f"{dir}{output_suffix}")
+  cols,_ = _palette(source_file, tolerance)
+  if doing_dir:
+    for f in _listdir(dir):
+      fp = f"{dir}/{f}"
+      if not os.path.isfile(fp):
+        continue
+      _apply_palette(fp, cols, tolerance, f"{dir}{output_suffix}/{f}")
+  else:
+    _apply_palette(file, cols, tolerance, _suffixed_path(file, output_suffix))
+
+def _apply_palette(file, palette, tolerance, dest_path):
+  this_palette,c2pc = _palette(file, tolerance)
+  this_pal_to_pal = dict()
+  fract = len(palette) / len(this_palette)
+  for i in range(len(this_palette)):
+    this_pal_to_pal[this_palette[i]] = palette[math.floor(i * fract)]
+  img = Image.open(file).convert("RGBA")
+  pixels = img.load()
+  for x in range(img.size[0]):
+    for y in range(img.size[1]):
+      if pixels[x,y][3] == 0: continue
+      this_col = pixels[x,y][:3]
+      pixels[x,y] = (*this_pal_to_pal[c2pc[this_col]], pixels[x,y][3])
+  img.save(dest_path)
 
 @app.command()
 def split(
