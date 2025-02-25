@@ -9,7 +9,8 @@ from typing import Optional
 app = typer.Typer()
 
 def _listdir(path: str):
-  return [fp for fp in os.listdir(path) if not fp.endswith(".import")]
+  # return [fp for fp in os.listdir(path) if not fp.endswith(".import")]
+  return [fp for fp in os.listdir(path) if fp.endswith(".png")]
 
 def _basic_file_dir_checks(file: str, dir: str, output_dir: str):
   if file is None and dir is None:
